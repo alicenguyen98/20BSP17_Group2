@@ -1,6 +1,7 @@
 import os
 import sqlite3
 import datetime
+import pandas as pd
 
 db_path = './db/database.db'
 
@@ -16,18 +17,15 @@ class sqlite_connection:
         except sqlite3.Error as e:
             #print out error
             print(e)
-
     def __exit__(self, type, value, traceback):
         if self.conn:
             #commit changes to database and close connection
             self.conn.commit()
             self.conn.close()
-
 def init():
     # Create directory
     if not os.path.exists('./db'):
         os.mkdir('./db')
-
     # Initialize database
     with sqlite_connection(db_path) as cursor:
         
@@ -49,15 +47,54 @@ def init():
         
         # Create a table for manually reviewed sentiment scores
         command = '''
-        CREATE TABLE IF NOT EXISTS review_results(
-            tweet_id INTEGER PRIMARY KEY UNIQUE,
-            sentiment INT NOT NULL,
-            relevancy INT NOT NULL,
-            FOREIGN KEY (tweet_id)
-                REFERENCES tweets (id)
-            )'''
+            CREATE TABLE IF NOT EXISTS review_results(
+                tweet_id INTEGER PRIMARY KEY UNIQUE,
+                sentiment INT,
+                FOREIGN KEY (tweet_id)
+                    REFERENCES tweets (id)
+            );
+        '''
         cursor.execute(command)
 
+        # Create analysis models table
+        command = '''
+        CREATE TABLE IF NOT EXISTS analysis_models(
+            id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            PRIMARY KEY(id),
+            UNIQUE(id)
+            );'''
+        cursor.execute(command)
+
+        # Create analysis classification table
+        command = '''
+        CREATE TABLE IF NOT EXISTS analysis_classification(
+            model_id INTEGER NOT NULL,
+            label TEXT NOT NULL,
+            tweet_id INTEGER NOT NULL,
+            classification INTEGER NOT NULL,
+            FOREIGN KEY (model_id)
+                REFERENCES analysis_models (id),
+            UNIQUE(model_id, label, tweet_id)
+            );'''
+        cursor.execute(command)
+
+        # Create analysis performance table
+        command = '''
+        CREATE TABLE IF NOT EXISTS analysis_performance(
+            model_id INTEGER NOT NULL,
+            label TEXT NOT NULL,
+            accuracy REAL NOT NULL,
+            precision REAL NOT NULL,
+            recall REAL NOT NULL,
+            f1 REAL NOT NULL,
+            FOREIGN KEY (model_id)
+                REFERENCES analysis_models (id),
+            UNIQUE(model_id, label)
+            );'''
+        cursor.execute(command)
+
+#region raw data
 def add_tweets(tweets):
     with sqlite_connection(db_path) as cursor:
         command = """
@@ -115,5 +152,171 @@ def get_unreviewed_tweets():
                 return cursor.fetchall()
     except:
         return None
+#endregion
+#region reviewed tweets
+def add_manually_reviewed_tweets(tweets):
+    try:
+        with sqlite_connection(db_path) as cursor:
+            if cursor:
+                command = """
+                    INSERT INTO review_results(
+                        tweet_id,
+                        sentiment
+                    ) 
+                    VALUES(?,?)
+                    ON CONFLICT (tweet_id) DO UPDATE SET
+                        sentiment=excluded.sentiment
+                    """
+                cursor.executemany(command, tweets)
+    except sqlite3.Error as err:
+        print(f"{err}")
+        return None
+def get_manually_reviewed_tweets():
+    try:
+        with sqlite_connection(db_path) as cursor:
+            command = """
+                SELECT review_results.tweet_id, tweets.text, review_results.sentiment
+                FROM (tweets 
+                INNER JOIN review_results ON tweets.id = review_results.tweet_id);
+            """
+            cursor.execute(command)
+            return cursor.fetchall()
+    except:
+        return None
+#endregion
+#region analysed tweets
+def clear_analysis_tables():
+    with sqlite_connection(db_path) as cursor:
+        command = """
+            DELETE FROM analysis_models;
+        """
+        cursor.execute(command)
 
+        command = """
+            DELETE FROM analysis_classification;
+        """
+        cursor.execute(command)
+
+        command = """
+            DELETE FROM analysis_performance;
+        """
+        cursor.execute(command)
+
+def get_analysis_model_name(id) -> str:
+    try:
+        with sqlite_connection(db_path) as cursor:
+            command = """
+                SELECT name
+                FROM analysis_models
+                WHERE id = ?;
+            """
+            cursor.execute(command, (id,))
+            return cursor.fetchone()[0]
+    except sqlite3.Error as err:
+        print(err)
+        return None
+
+def get_analysis_model_id(name) -> int:
+    try:
+        with sqlite_connection(db_path) as cursor:
+            command = """
+                SELECT id
+                FROM analysis_models
+                WHERE name = ?;
+            """
+            cursor.execute(command, (name,))
+            return cursor.fetchone()[0]
+    except sqlite3.Error as err:
+        print(err)
+        return None
+
+def add_analysis_model(name) -> int:
+    try:
+        with sqlite_connection(db_path) as cursor:
+            command = """
+                INSERT INTO analysis_models(name)
+                    VALUES(?);
+                """
+            cursor.execute(command, (name,))
+
+            command = """
+                SELECT id
+                FROM analysis_models
+                WHERE name = ?;
+            """
+            cursor.execute(command, (name,))
+
+            return cursor.fetchone()[0]
+    except sqlite3.Error as err:
+        print(err)
+        return None
+
+def get_classification(model_id, label):
+    try:
+        with sqlite_connection(db_path) as cursor:
+            command = f"""
+                SELECT tweet_id, classification 
+                FROM analysis_classification
+                WHERE model_id = ? AND label = ?;
+            """
+            values = (model_id, label)
+            cursor.execute(command, values)
+
+            return cursor.fetchone()[0]
+    except sqlite3.Error as err:
+        print(err)
+        return None
+
+def add_classification(model_id, label, classification: pd.Series):
+    try:
+        with sqlite_connection(db_path) as cursor:
+            command = """
+                INSERT INTO analysis_classification(model_id, label, tweet_id, classification)
+                    VALUES(?,?,?,?);
+                """
+            values = map(lambda x: (model_id, x[0], label, x[1]), classification.iteritems())
+            cursor.executemany(command, values)
+    except sqlite3.Error as err:
+        print(err)
+
+def get_all_classification_performance():
+    try:
+        with sqlite_connection(db_path) as cursor:
+            command = f"""
+                SELECT model_id, label, accuracy, precision, recall, f1
+                FROM analysis_performance
+            """
+            cursor.execute(command)
+            return cursor.fetchall()
+    except sqlite3.Error as err:
+        print(err)
+        return None
+
+def get_classification_performance(model_id, label):
+    try:
+        with sqlite_connection(db_path) as cursor:
+            command = f"""
+                SELECT accuracy, precision, recall, f1
+                FROM analysis_performance
+                WHERE model_id = ? AND label = ?;
+            """
+            values = (model_id, label)
+            cursor.execute(command, values)
+            return cursor.fetchone()[0]
+    except sqlite3.Error as err:
+        print(err)
+        return None
+
+def add_classification_performance(model_id, label, accuracy, precision, recall, f1):
+    try:
+        with sqlite_connection(db_path) as cursor:
+            command = """
+                INSERT INTO analysis_performance(model_id, label, accuracy, precision, recall, f1)
+                    VALUES(?,?,?,?,?,?);
+                """
+            values = (model_id, label, accuracy, precision, recall, f1)
+            cursor.execute(command, values)
+    except sqlite3.Error as err:
+        print(err)
+#endregion
 init()

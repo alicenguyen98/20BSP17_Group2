@@ -28,8 +28,8 @@ def get_new_tweets(items=None, minus_days=None, wait_on_rate_limit=False):
         'covid vaccine', 'covax', 'COVID-19 Vaccine', 'anti covid vaccine'
         # Pfizer-BioNTech and its alias
         'Pfizer', 'BioNTech',
-        # Oxford/AstraZeneca
-        'Oxford', 'AstraZeneca',
+        # Oxford-AstraZeneca
+        'AstraZeneca',
         # Moderna
         'Moderna',
     ]
