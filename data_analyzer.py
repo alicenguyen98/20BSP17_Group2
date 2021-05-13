@@ -3,32 +3,60 @@ from sklearn.metrics import classification_report
 from analysis_model import VaderModel, TextBlobDefaultPA, TextBlobDefaultNBA, TextBlobNBC, SklearnNBMD, SklearnSVM
 
 import db_manager
+import os.path
+import joblib
 import re
 import pandas as pd
 
+trained_model_path = './trained_models'
 
-def sentiment_analysis():
+def sentiment_analysis(retrain=False):
+
+    models = []
+    models_trained = False
+
+    if not retrain:
+        #Try to retrieve trained models
+        trained_models = db_manager.get_analysis_models()
+        if trained_models:
+            models_trained = True
+            for _, _, model_path in trained_models:
+                try:
+                    with open(f'{model_path}', 'rb') as f:
+                        model = joblib.load(f)
+                        models.append(model)
+                except Exception as err:
+                    print(f'Failed to load model: {err}')
+
+    if not models:
+        models = [
+            VaderModel(),
+            TextBlobDefaultPA(),
+            TextBlobDefaultNBA(),
+            TextBlobNBC(),
+            SklearnNBMD(),
+            SklearnNBMD(ngram_range=(1,2)),
+            SklearnSVM(),
+            SklearnSVM(ngram_range=(1,2))
+        ]
+        models_trained = False
+
+    # Clear previous analysis history
     db_manager.clear_analysis_tables()
-    models = [
-        VaderModel(),
-        TextBlobDefaultPA(),
-        TextBlobDefaultNBA(),
-        TextBlobNBC(),
-        SklearnNBMD(),
-        SklearnNBMD(ngram_range=(1,2)),
-        SklearnSVM(),
-        SklearnSVM(ngram_range=(1,2))
-    ]
+    
+    # Split datasets
     x_train, x_test, y_train, y_test = get_dataset()
 
     # Train models
-    for model in models:
-        print(f"Training model: {model.name}")
-        model.train(x_train,y_train)
+    if not models_trained:
+        for model in models:
+            print(f"Training model: {model.name}")
+            model.train(x_train,y_train)
         
     # Classification
     for model in models:
 
+        #Add or get model id
         model_id = db_manager.add_analysis_model(model.name)
         
         print(f"{model.name}: conducting classification")
@@ -38,6 +66,31 @@ def sentiment_analysis():
 
         # Testing data
         classify(model, x_test, y_test, 'test', model_id)
+
+        # Save models
+        if not models_trained:
+            save_model(model)
+
+
+def save_model(model, model_id):
+    try:
+        # Save model
+        path = f'{trained_model_path}/{model.name}.joblib'
+        print(f'{model.name}: Saving model at path {path}')
+
+        # Check directory
+        if not os.path.exists(trained_model_path):
+            print(f'Trained model save directory not found ({trained_model_path}). Creating one.')
+            os.mkdir(trained_model_path)
+        
+        with open(path, 'wb+') as f:
+            joblib.dump(model, f)
+        
+        # Write to database
+        db_manager.update_analysis_model_path(model_id, path)
+
+    except Exception as err:
+        print(f'Failed to save model: {err}')
 
 def classify(model, x, y, label, model_id):
     # get classification
@@ -57,7 +110,7 @@ def clean_text(tweet):
     tweet = re.sub(r'#', '', tweet)
     # Remove RT
     tweet = re.sub(r'RT[\s]+', '', tweet)
-    # Remove hyper links
+    # Remove hyperlinks
     tweet = re.sub(r'https?:\/\/\S+', '',tweet)
 
     return tweet

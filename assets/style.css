@@ -1,0 +1,14 @@
+@media (min-width: 960px){
+
+    #contents-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 33.33%);
+        gap: 8px;
+    }
+
+    #roc-span > * {
+        display: inline-block;
+        width: 50%;
+    }
+
+}
