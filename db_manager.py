@@ -61,6 +61,7 @@ def init():
         CREATE TABLE IF NOT EXISTS analysis_models(
             id INTEGER NOT NULL,
             name TEXT NOT NULL,
+            path TEXT,
             PRIMARY KEY(id),
             UNIQUE(id)
             );'''
@@ -132,7 +133,8 @@ def get_latest_tweet_id():
                     FROM tweets
                 """
                 cursor.execute(command)
-                return cursor.fetchone()[0]
+                result = cursor.fetchone()
+                return result[0] if result else None
     except sqlite3.Error as err:
         print(f"Failed to retrieve latest tweet id: {err}")
         return None
@@ -202,6 +204,19 @@ def clear_analysis_tables():
         """
         cursor.execute(command)
 
+def get_analysis_models():
+    try:
+        with sqlite_connection(db_path) as cursor:
+            command = """
+                SELECT id, name, path
+                FROM analysis_models
+            """
+            cursor.execute(command)
+            return cursor.fetchall()
+    except sqlite3.Error as err:
+        print(err)
+        return None
+
 def get_analysis_model_name(id) -> str:
     try:
         with sqlite_connection(db_path) as cursor:
@@ -211,7 +226,8 @@ def get_analysis_model_name(id) -> str:
                 WHERE id = ?;
             """
             cursor.execute(command, (id,))
-            return cursor.fetchone()[0]
+            result = cursor.fetchone()
+            return result[0] if result else None
     except sqlite3.Error as err:
         print(err)
         return None
@@ -225,7 +241,8 @@ def get_analysis_model_id(name) -> int:
                 WHERE name = ?;
             """
             cursor.execute(command, (name,))
-            return cursor.fetchone()[0]
+            result = cursor.fetchone()
+            return result[0] if result else None
     except sqlite3.Error as err:
         print(err)
         return None
@@ -246,10 +263,25 @@ def add_analysis_model(name) -> int:
             """
             cursor.execute(command, (name,))
 
-            return cursor.fetchone()[0]
+            result = cursor.fetchone()
+            return result[0] if result else None
     except sqlite3.Error as err:
         print(err)
         return None
+
+def update_analysis_model_path(model_id, path):
+        try:
+            with sqlite_connection(db_path) as cursor:
+                command = """
+                    UPDATE analysis_models
+                    SET path = ?
+                    WHERE id = ?
+                    """
+                print((path, model_id))
+                cursor.execute(command, (path, model_id))
+        except sqlite3.Error as err:
+            print(err)
+            return None
 
 def get_classification(model_id, label):
     try:
@@ -261,8 +293,7 @@ def get_classification(model_id, label):
             """
             values = (model_id, label)
             cursor.execute(command, values)
-
-            return cursor.fetchone()[0]
+            return cursor.fetchall()
     except sqlite3.Error as err:
         print(err)
         return None
@@ -274,7 +305,7 @@ def add_classification(model_id, label, classification: pd.Series):
                 INSERT INTO analysis_classification(model_id, label, tweet_id, classification)
                     VALUES(?,?,?,?);
                 """
-            values = map(lambda x: (model_id, x[0], label, x[1]), classification.iteritems())
+            values = map(lambda x: (model_id, label, x[0], x[1]), classification.iteritems())
             cursor.executemany(command, values)
     except sqlite3.Error as err:
         print(err)
@@ -302,7 +333,8 @@ def get_classification_performance(model_id, label):
             """
             values = (model_id, label)
             cursor.execute(command, values)
-            return cursor.fetchone()[0]
+            result = cursor.fetchone()
+            return result[0] if result else None
     except sqlite3.Error as err:
         print(err)
         return None

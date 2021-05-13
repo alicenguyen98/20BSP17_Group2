@@ -134,7 +134,7 @@ class TextBlobNBC(TextBlobBaseModel):
 
     def train(self, x: pd.Series, y: pd.Series):
         df = pd.concat([x,y], axis=1)
-        data = [x for x in df.itertuples(index=False)]
+        data = [tuple(x) for x in df.itertuples(index=False)]
         self._classifier = tb.classifiers.NaiveBayesClassifier(data)
         self._classifier.train()
     
@@ -161,5 +161,5 @@ class SklearnSVM(SklearnBaseModel):
     """
     def __init__(self, ngram_range:tuple=(1,1)):
         classifier = skl.svm.SVC()
-        super().__init__(f'SklearnSVM ngran={ngram_range}', classifier, ngram_range = ngram_range)
+        super().__init__(f'SklearnSVM ngram={ngram_range}', classifier, ngram_range = ngram_range)
 #endregion
