@@ -277,7 +277,6 @@ def update_analysis_model_path(model_id, path):
                     SET path = ?
                     WHERE id = ?
                     """
-                print((path, model_id))
                 cursor.execute(command, (path, model_id))
         except sqlite3.Error as err:
             print(err)

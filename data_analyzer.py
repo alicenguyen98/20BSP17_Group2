@@ -69,7 +69,7 @@ def sentiment_analysis(retrain=False):
 
         # Save models
         if not models_trained:
-            save_model(model)
+            save_model(model, model_id)
 
 
 def save_model(model, model_id):
